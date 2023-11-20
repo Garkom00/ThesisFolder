@@ -1,0 +1,147 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: conditional-
+  namespace: argo
+spec:
+  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - name: Script
+        template: scpt1
+    - - name: ScriptLog
+        template: createlog
+        arguments:
+          parameters:
+          - name: namestep
+            value: Script
+          - name: starttime
+            value: "{{steps.Script.startedAt}}"
+          - name: outputstep
+            value: "{{steps.Script.outputs.result}}"
+          - name: finishtime
+            value: "{{steps.Script.finishedAt}}"
+    - - name: Somma
+        template: cont1
+        arguments:
+          parameters:
+          - name: config
+            value: "{{steps.Script.outputs.parameters.database}}"
+        when: "{{steps.Script.outputs.result}} == true "
+    - - name: SommaLog
+        template: createlog
+        arguments:
+          parameters:
+          - name: namestep
+            value: Somma
+          - name: starttime
+            value: "{{steps.Somma.startedAt}}"
+          - name: outputstep
+            value: "{{steps.Somma.outputs.result}}"
+          - name: finishtime
+            value: "{{steps.Somma.finishedAt}}"
+        when: "{{steps.Script.outputs.result}} == true "
+    - - name: Prodotto
+        template: cont2
+        arguments:
+          parameters:
+          - name: config
+            value: "{{steps.Script.outputs.parameters.database}}"
+        when: "{{steps.Script.outputs.result}} == false "
+    - - name: ProdottoLog
+        template: createlog
+        arguments:
+          parameters:
+          - name: namestep
+            value: Prodotto
+          - name: starttime
+            value: "{{steps.Prodotto.startedAt}}"
+          - name: outputstep
+            value: "{{steps.Prodotto.outputs.result}}"
+          - name: finishtime
+            value: "{{steps.Prodotto.finishedAt}}"
+        when: "{{steps.Script.outputs.result}} == false "
+
+  - name: scpt1
+    script:
+      image: python:alpine3.6
+      command: [python]
+      source: "import random\nimport random\nresult = \"true\" if random.randint(0, 1) == 0 else \"false\" \nprint(result)\ndatabase = \"DB1\" if random.randint(0, 1) == 0 else \"DB2\"\nwith open(\"/tmp/dat.txt\", \"w\") as file:\n  file.write(database)\n"
+    outputs:
+      parameters:
+      - name: database
+        valueFrom:
+          default: "DB1"
+          path: /tmp/dat.txt
+
+  - name: cont1
+    inputs:
+      parameters:
+      - name: config
+    container:
+      image: sumkk
+      imagePullPolicy: Never
+      env:
+      - name: DB_URL
+        valueFrom:
+          secretKeyRef:
+            name: db-credentials
+            key: "{{ inputs.parameters.config }}_DB_URL"
+      - name: DB_USER
+        valueFrom:
+          secretKeyRef:
+            name: db-credentials
+            key: "{{ inputs.parameters.config }}_DB_USER"
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: db-credentials
+            key: "{{ inputs.parameters.config }}_DB_PASSWORD"
+      command: ["java", "-jar", "/app/sum.jar"]
+
+  - name: cont2
+    inputs:
+      parameters:
+      - name: config
+    container:
+      image: prodkk
+      imagePullPolicy: Never
+      env:
+      - name: DB_URL
+        valueFrom:
+          secretKeyRef:
+            name: db-credentials
+            key: "{{ inputs.parameters.config }}_DB_URL"
+      - name: DB_USER
+        valueFrom:
+          secretKeyRef:
+            name: db-credentials
+            key: "{{ inputs.parameters.config }}_DB_USER"
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: db-credentials
+            key: "{{ inputs.parameters.config }}_DB_PASSWORD"
+      command: ["java", "-jar", "/app/prod.jar"]
+
+  - name: createlog
+    inputs:
+      parameters:
+      - name: namestep
+      - name: starttime
+      - name: outputstep
+      - name: finishtime
+    script:
+      image: python:alpine3.6
+      command: [python]
+      source: |
+        from datetime import datetime
+        datetime1 = datetime.strptime("{{inputs.parameters.starttime}}", "%Y-%m-%dT%H:%M:%SZ")
+        datetime2 = datetime.strptime("{{inputs.parameters.finishtime}}", "%Y-%m-%dT%H:%M:%SZ")
+        difference = datetime2 - datetime1
+        differenceString = str(difference.total_seconds())
+        StringLog = "Name:{{inputs.parameters.namestep}} \nStarted at time: {{inputs.parameters.starttime}} \nOutput: {{inputs.parameters.outputstep}} \nFinished at time: {{inputs.parameters.finishtime}} \nDuration: " + differenceString + "\n"
+        with open("/tmp/localLogs.txt", "w") as file:
+            file.write(StringLog)
+        print(StringLog)

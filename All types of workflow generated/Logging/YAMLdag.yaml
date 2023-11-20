@@ -1,0 +1,163 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dag-
+  namespace: argo
+spec:
+  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - name: A
+        template: cont1withlog
+      - name: B
+        template: cont2withlog
+        dependencies: [A]
+      - name: C
+        template: cont3withlog
+        dependencies: [A]
+      - name: D
+        template: cont4withlog
+        dependencies: [B, C]
+
+  - name: cont1
+    container:
+      image: sumkk
+      imagePullPolicy: Never
+      env:
+      - name: DB_URL
+        value: "jdbc:postgresql://host.minikube.internal:5433/postgres"
+      - name: DB_USER
+        value: "postgres"
+      - name: DB_PASSWORD
+        value: "0101"
+      command: ["java", "-jar", "/app/sum.jar"]
+
+  - name: cont1withlog
+    steps:
+    - - name: cont1
+        template: cont1
+    - - name: cont1Log
+        template: createlog
+        arguments:
+          parameters:
+          - name: namestep
+            value: cont1
+          - name: starttime
+            value: "{{steps.cont1.startedAt}}"
+          - name: outputstep
+            value: "{{steps.cont1.outputs.result}}"
+          - name: finishtime
+            value: "{{steps.cont1.finishedAt}}"
+
+  - name: cont2
+    container:
+      image: prodkk
+      imagePullPolicy: Never
+      env:
+      - name: DB_URL
+        value: "jdbc:postgresql://host.minikube.internal:5433/postgres"
+      - name: DB_USER
+        value: "postgres"
+      - name: DB_PASSWORD
+        value: "0101"
+      command: ["java", "-jar", "/app/prod.jar"]
+
+  - name: cont2withlog
+    steps:
+    - - name: cont2
+        template: cont2
+    - - name: cont2Log
+        template: createlog
+        arguments:
+          parameters:
+          - name: namestep
+            value: cont2
+          - name: starttime
+            value: "{{steps.cont2.startedAt}}"
+          - name: outputstep
+            value: "{{steps.cont2.outputs.result}}"
+          - name: finishtime
+            value: "{{steps.cont2.finishedAt}}"
+
+  - name: cont3
+    container:
+      image: powkk
+      imagePullPolicy: Never
+      env:
+      - name: DB_URL
+        value: "jdbc:postgresql://host.minikube.internal:5433/postgres"
+      - name: DB_USER
+        value: "postgres"
+      - name: DB_PASSWORD
+        value: "0101"
+      command: ["java", "-jar", "/app/pow.jar"]
+
+  - name: cont3withlog
+    steps:
+    - - name: cont3
+        template: cont3
+    - - name: cont3Log
+        template: createlog
+        arguments:
+          parameters:
+          - name: namestep
+            value: cont3
+          - name: starttime
+            value: "{{steps.cont3.startedAt}}"
+          - name: outputstep
+            value: "{{steps.cont3.outputs.result}}"
+          - name: finishtime
+            value: "{{steps.cont3.finishedAt}}"
+
+  - name: cont4
+    container:
+      image: subkk
+      imagePullPolicy: Never
+      env:
+      - name: DB_URL
+        value: "jdbc:postgresql://host.minikube.internal:5433/postgres"
+      - name: DB_USER
+        value: "postgres"
+      - name: DB_PASSWORD
+        value: "0101"
+      command: ["java", "-jar", "/app/sub.jar"]
+
+  - name: cont4withlog
+    steps:
+    - - name: cont4
+        template: cont4
+    - - name: cont4Log
+        template: createlog
+        arguments:
+          parameters:
+          - name: namestep
+            value: cont4
+          - name: starttime
+            value: "{{steps.cont4.startedAt}}"
+          - name: outputstep
+            value: "{{steps.cont4.outputs.result}}"
+          - name: finishtime
+            value: "{{steps.cont4.finishedAt}}"
+
+  - name: createlog
+    inputs:
+      parameters:
+      - name: namestep
+      - name: starttime
+      - name: outputstep
+      - name: finishtime
+    script:
+      image: python:alpine3.6
+      command: [python]
+      source: |
+        from datetime import datetime
+        datetime1 = datetime.strptime("{{inputs.parameters.starttime}}", "%Y-%m-%dT%H:%M:%SZ")
+        datetime2 = datetime.strptime("{{inputs.parameters.finishtime}}", "%Y-%m-%dT%H:%M:%SZ")
+        difference = datetime2 - datetime1
+        differenceString = str(difference.total_seconds())
+        StringLog = "Name:{{inputs.parameters.namestep}} \nStarted at time: {{inputs.parameters.starttime}} \nOutput: {{inputs.parameters.outputstep}} \nFinished at time: {{inputs.parameters.finishtime}} \nDuration: " + differenceString + "\n"
+        with open("/tmp/localLogs.txt", "w") as file:
+            file.write(StringLog)
+        print(StringLog)

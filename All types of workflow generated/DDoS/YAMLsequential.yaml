@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: sequential-
+  namespace: argo
+spec:
+  entrypoint: replies
+  templates:
+
+  - name: replies
+    dag:
+      tasks:
+      - name: reply1
+        template: main
+      - name: reply2
+        template: main
+
+  - name: main
+    steps:
+    - - name: Somma
+        template: cont1
+    - - name: Prodotto
+        template: cont2
+
+  - name: cont1
+    container:
+      image: sumkk
+      imagePullPolicy: Never
+      env:
+      - name: DB_URL
+        value: "jdbc:postgresql://host.minikube.internal:5433/postgres"
+      - name: DB_USER
+        value: "postgres"
+      - name: DB_PASSWORD
+        value: "0101"
+      command: ["java", "-jar", "/app/sum.jar"]
+    metadata:
+      labels:
+        app: restrict-traffic
+
+  - name: cont2
+    container:
+      image: prodkk
+      imagePullPolicy: Never
+      env:
+      - name: DB_URL
+        value: "jdbc:postgresql://host.minikube.internal:5433/postgres"
+      - name: DB_USER
+        value: "postgres"
+      - name: DB_PASSWORD
+        value: "0101"
+      command: ["java", "-jar", "/app/prod.jar"]
+    metadata:
+      labels:
+        app: restrict-traffic
+
